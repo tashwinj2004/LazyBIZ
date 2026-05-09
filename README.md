@@ -1,14 +1,14 @@
-# SmartBIZ — AI-Powered Enterprise BI Dashboard
+# LazyBIZ — AI-Powered Enterprise BI Dashboard
 
-SmartBIZ is a state-of-the-art Business Intelligence platform that transforms raw data into actionable insights using AI. It leverages a Retrieval-Augmented Generation (RAG) pipeline to provide deep analytics, automated visualizations, and a natural language chatbot for your CSV data.
+LazyBIZ is a state-of-the-art Business Intelligence platform that transforms raw data into actionable insights using AI. It leverages a Retrieval-Augmented Generation (RAG) pipeline to provide deep analytics, automated visualizations, and a natural language chatbot for your CSV data.
 
-![SmartBIZ Header](https://via.placeholder.com/1200x400/0b1326/ffffff?text=SmartBIZ+AI+Analytics)
+![LazyBIZ Header](https://via.placeholder.com/1200x400/0b1326/ffffff?text=LazyBIZ+AI+Analytics)
 
 ## 🚀 Key Features
 
 - **Automated Data Cleaning (MCP):** Automatically detects and fixes missing values, outliers, and formatting issues.
 - **Dynamic Visualizations:** Generates insightful charts (Revenue trends, Product performance, etc.) using Chart.js.
-- **RAG-Powered Chatbot:** "Ask SmartBIZ AI" allows you to query your data in natural language with source-specific grounding.
+- **RAG-Powered Chatbot:** "Ask LazyBIZ AI" allows you to query your data in natural language with source-specific grounding.
 - **Dual-Provider LLM Strategy:** Seamless fallback between Groq and OpenRouter to ensure high availability.
 - **Enterprise Design:** A premium, dark-mode dashboard built with glassmorphism and modern typography (Inter).
 - **History Management:** Revisit previously uploaded datasets and their AI-generated reports instantly.
@@ -40,7 +40,7 @@ SmartBIZ is a state-of-the-art Business Intelligence platform that transforms ra
 ### 2. Clone the Repository
 ```bash
 git clone <repository-url>
-cd "RAG SmartBiz"
+cd "LazyBIZ"
 ```
 
 ### 3. Install Dependencies
@@ -88,4 +88,4 @@ CHROMA_DB_PATH=../data/chroma_db
 - **Local RAG:** Your raw data chunks are stored in a local vector database, and only relevant snippets are sent to the LLM for processing.
 
 ---
-Built with ❤️ by the SmartBIZ Team.
+Built with ❤️ by the LazyBIZ Team.

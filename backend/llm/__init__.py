@@ -12,6 +12,7 @@ import time
 import logging
 import requests
 import json
+# REMOVED google-generativeai to prevent DLL crashes on Python 3.9
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,16 @@ GROQ_MODEL = "llama-3.3-70b-versatile"   # Groq free-tier model
 
 
 class LLMClient:
-    """Dual-provider LLM client: OpenRouter → Groq fallback."""
+    """Multi-provider LLM client: Groq (Primary) → Gemini (Fallback) → OpenRouter (Last Resort)."""
 
     def __init__(self):
+        self.gemini_key = os.getenv("GEMINI_API_KEY", "")
         self.openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
         self.groq_key       = os.getenv("GROQ_API_KEY", "")
         self._last_call     = 0.0
 
-        if not self.openrouter_key:
-            logger.warning("OPENROUTER_API_KEY not set — will use Groq only.")
-        if not self.groq_key:
-            logger.warning("GROQ_API_KEY not set — will use OpenRouter only.")
+        if not self.gemini_key:
+            logger.warning("GEMINI_API_KEY not set — will use fallbacks.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Core call router
@@ -54,7 +54,7 @@ class LLMClient:
     def _call(self, messages, max_tokens=1024, temperature=0.7):
         """
         Try Groq first (fastest, most reliable).
-        If Groq fails or rate-limits, fall back to OpenRouter free models.
+        If Groq fails or rate-limits, fall back to Gemini then OpenRouter.
         """
         # ── Attempt 1: Groq (Primary) ──────────────────────────────────────
         if self.groq_key:
@@ -68,9 +68,16 @@ class LLMClient:
             )
             if result is not None:
                 return result
-            logger.warning("Groq rate-limited or failed. Falling back to OpenRouter …")
+            logger.warning("Groq rate-limited or failed. Falling back to Gemini …")
 
-        # ── Attempt 2: OpenRouter (Fallback) ───────────────────────────────
+        # ── Attempt 2: Gemini (Fallback) ────────────────────────────────────
+        if self.gemini_key:
+            result = self._gemini_call(messages)
+            if result is not None:
+                return result
+            logger.warning("Gemini failed. Falling back to OpenRouter …")
+
+        # ── Attempt 3: OpenRouter (Fallback) ───────────────────────────────
         if self.openrouter_key:
             for model in OPENROUTER_MODELS:
                 result = self._try_provider(
@@ -81,8 +88,8 @@ class LLMClient:
                     max_tokens=max_tokens,
                     temperature=temperature,
                     extra_headers={
-                        "HTTP-Referer": "https://smartbiz-rag.onrender.com",
-                        "X-Title": "SmartBIZ RAG Dashboard",
+                        "HTTP-Referer": "https://lazybiz-rag.onrender.com",
+                        "X-Title": "LazyBIZ RAG Dashboard",
                     },
                 )
                 if result is not None:
@@ -91,7 +98,7 @@ class LLMClient:
 
             logger.error("All OpenRouter models exhausted.")
 
-        # ── Both providers down ────────────────────────────────────────────
+        # ── All providers down ────────────────────────────────────────────
         return (
             "⚠️ AI service is temporarily unavailable on all providers. "
             "Please wait a minute and try again. Your data is safe."
@@ -201,7 +208,7 @@ class LLMClient:
         Generate AI business insights from dashboard data context.
         Returns a list of insight objects.
         """
-        system_prompt = """You are SmartBIZ AI, an enterprise business intelligence analyst. 
+        system_prompt = """You are LazyBIZ AI, an enterprise business intelligence analyst. 
 Analyze the provided data context and generate exactly 3 actionable business insights.
 
 Return your response as a JSON array with exactly 3 objects, each having:
@@ -256,27 +263,20 @@ Return ONLY the JSON array, no other text."""
         ]
 
     def chat_with_context(self, question, rag_context, sources=None):
-        """Answer a user question using RAG context."""
-        system_prompt = """You are SmartBIZ AI Assistant, an expert business data analyst.
-You have been provided with a GLOBAL DATASET SUMMARY (containing overall stats like total rows, columns, and key metrics) and RELEVANT DATA SNIPPETS (specific rows matching the user's query).
+        """Answer a user question using RAG context with strict product name rules."""
+        system_prompt = """You are LazyBIZ AI Assistant, an expert business data analyst.
+You have been provided with a GLOBAL DATASET SUMMARY and RELEVANT DATA SNIPPETS.
 
-Guidelines:
-1. Answer the user's question based on the provided context. 
-2. For global questions (e.g. "What is the total revenue?", "How many rows are there?"), rely on the GLOBAL DATASET SUMMARY.
-3. For specific questions (e.g. "What happened in row 45?"), look at the RELEVANT DATA SNIPPETS.
-4. DO NOT tell the user that you only have access to a few rows or that information is missing if the answer is present in the GLOBAL DATASET SUMMARY.
-5. Be specific with numbers and provide actionable business recommendations.
-6. Keep responses professional, helpful, and concise (2-4 paragraphs max)."""
+STRICT GUIDELINES:
+1. Answer the user's question directly. DO NOT explain backend processes.
+2. If asked about "products" or "highest sales", use the SPECIFIC PRODUCT NAME from the 'product_name' column. 
+3. NEVER provide category names (like 'Machinery', 'Hardware', 'Tools') when a specific product name is requested. Categories are for broad grouping, but "Product" always refers to the specific item name.
+4. For "highest sales", provide the EXACT PRODUCT NAME + TOTAL REVENUE.
+5. If the user asks about at-risk items, refer to the specific product names and solutions in the summary.
+6. Keep responses very concise (max 2 paragraphs). Answer first, then insight."""
 
-        source_info = ""
-        if sources:
-            source_info = f"\nData sources: {', '.join(sources)}"
-
-        user_prompt = f"""Context from business data:{source_info}
-
-{rag_context}
-
-User Question: {question}"""
+        source_info = f"\nData sources: {', '.join(sources)}" if sources else ""
+        user_prompt = f"Context:{source_info}\n\n{rag_context}\n\nQuestion: {question}"
 
         return self._call([
             {"role": "system", "content": system_prompt},
@@ -293,3 +293,25 @@ Keep it to 2-3 sentences."""
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": f"Summarize this dataset:\n{schema_info}"},
         ], max_tokens=256, temperature=0.4)
+
+    def _gemini_call(self, messages):
+        """Invoke Gemini Pro via direct REST API (Stable for Python 3.9)."""
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
+            
+            # Convert messages to Gemini format
+            contents = []
+            for m in messages:
+                role = "user" if m["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": m["content"]}]})
+            
+            payload = {"contents": contents}
+            response = requests.post(url, json=payload, timeout=30)
+            data = response.json()
+            
+            if "candidates" in data and len(data["candidates"]) > 0:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            return None
+        except Exception as e:
+            logger.error("Gemini REST call failed: %s", e)
+            return None

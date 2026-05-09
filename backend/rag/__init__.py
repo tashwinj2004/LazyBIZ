@@ -1,15 +1,13 @@
-"""
-RAG Engine - ChromaDB-based vector store for CSV data retrieval.
-Handles document ingestion, embedding, and similarity search.
-
-Optimizations applied (CPU-only):
-  1. Vectorized text building  — replaces slow iterrows() with pandas apply()
-  2. Row chunking              — groups 5 rows per document (reduces doc count by 5x)
-  3. Bulk pre-computed embeds  — encodes all texts at once before upserting to ChromaDB
-  4. Tuned encode batch size   — 128 sentences per encode batch (good for CPU RAM)
-  5. Duplicate-skip hashing    — skips re-ingesting files already in the store
-"""
 import os
+import sys
+
+# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 import logging
 import hashlib
 import json
@@ -38,7 +36,7 @@ class RAGEngine:
 
         self.client = chromadb.PersistentClient(path=self.persist_dir)
         self.collection = self.client.get_or_create_collection(
-            name="smartbiz_data",
+            name="lazybiz_data",
             metadata={"hnsw:space": "cosine"}
         )
         self._model = None
@@ -130,9 +128,8 @@ class RAGEngine:
 
         for chunk_start in range(0, total_rows, CHUNK_ROWS):
             chunk_end  = min(chunk_start + CHUNK_ROWS, total_rows)
-            row_labels = f"Rows {chunk_start + 1}–{chunk_end}"
             chunk_text = (
-                f"{row_labels} from {display_name}:\n"
+                f"Data excerpt from {display_name}:\n"
                 + "\n".join(kv_series.iloc[chunk_start:chunk_end].tolist())
             )
             documents.append(chunk_text)
@@ -262,10 +259,19 @@ class RAGEngine:
 
         # Revenue / Sales KPI
         revenue_col = None
-        for c in numeric_cols:
-            if any(k in c.lower() for k in ["revenue", "sales", "amount", "total", "price"]):
-                revenue_col = c
+        priorities = [
+            ["revenue"],
+            ["total", "amount", "sales", "sale", "income"],
+            ["price", "value"]
+        ]
+        for p_list in priorities:
+            for c in numeric_cols:
+                if any(k in c.lower() for k in p_list):
+                    revenue_col = c
+                    break
+            if revenue_col:
                 break
+            
         if revenue_col is None and numeric_cols:
             revenue_col = numeric_cols[0]
 
@@ -278,20 +284,47 @@ class RAGEngine:
 
         # Date-based chart data
         date_col = None
+        # 1. Look for an already-parsed datetime column
         for c in df.columns:
-            if any(k in c.lower() for k in ["date", "time", "month", "year", "period"]):
+            if pd.api.types.is_datetime64_any_dtype(df[c]):
                 date_col = c
                 break
+        # 2. Look for a string column with a date-like name
+        if not date_col:
+            for c in df.columns:
+                if any(k in c.lower() for k in ["date", "time", "period"]):
+                    date_col = c
+                    break
+        # 3. Reconstruct from integer year/month/day columns
+        if not date_col:
+            _yc = next((c for c in df.columns if c.lower() == "year"),  None)
+            _mc = next((c for c in df.columns if c.lower() == "month"), None)
+            _dc = next((c for c in df.columns if c.lower() == "day"),   None)
+            if _yc and _mc:
+                try:
+                    _day_s = df[_dc] if _dc else 1
+                    df["__date__"] = pd.to_datetime(
+                        dict(year=df[_yc], month=df[_mc], day=_day_s), errors="coerce"
+                    )
+                    if df["__date__"].notna().sum() / max(len(df), 1) > 0.5:
+                        date_col = "__date__"
+                except Exception:
+                    pass
 
         if date_col and revenue_col:
             try:
-                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-                monthly = (
-                    df.dropna(subset=[date_col])
-                    .set_index(date_col)
-                    .resample("M")[revenue_col]
-                    .sum()
-                )
+                # Build a proper datetime Series — handle both string cols and __date__
+                if pd.api.types.is_datetime64_any_dtype(df[date_col]):
+                    date_series = df[date_col]
+                else:
+                    date_series = pd.to_datetime(df[date_col], errors="coerce")
+                temp = df[[revenue_col]].copy()
+                temp["__dt__"] = date_series
+                temp = temp.dropna(subset=["__dt__"]).set_index("__dt__").sort_index()
+                try:
+                    monthly = temp[revenue_col].resample("ME").sum()
+                except Exception:
+                    monthly = temp[revenue_col].resample("M").sum()
                 data["chart"]["labels"] = [d.strftime("%b %Y") for d in monthly.index]
                 data["chart"]["values"] = [round(float(v), 2) for v in monthly.values]
             except Exception:

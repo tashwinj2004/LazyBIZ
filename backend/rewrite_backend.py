@@ -16,7 +16,7 @@ mongo_uri = os.getenv("MONGO_URI")
 if not mongo_uri:
     print("WARNING: MONGO_URI not found in environment!")
 mongo_client = MongoClient(mongo_uri) if mongo_uri else None
-db = mongo_client.smartbiz if mongo_client else None
+db = mongo_client.lazybiz if mongo_client else None
 
 if db is not None:
     uploads_col = db.uploads

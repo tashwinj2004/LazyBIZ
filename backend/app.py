@@ -1,18 +1,35 @@
-"""
-SmartBIZ RAG Dashboard - Main Flask Application
-Cloud-Native Edition (MongoDB Atlas)
-"""
 import os
+import sys
 
-# Disable telemetry to prevent posthog capture() argument errors
+# Force UTF-8 output on Windows to prevent emoji print crashes
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+# MUST BE FIRST: Disable telemetry to prevent crashes on Python 3.9
 os.environ["CHROMA_TELEMETRY_IMPL"] = "INMEMORY"
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["POSTHOG_DISABLED"] = "1"
+
+"""
+LazyBIZ RAG Dashboard - Main Flask Application
+Cloud-Native Edition (MongoDB Atlas)
+"""
+
+# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
 
 import json
 import datetime
 import threading
 import uuid
+import traceback
 from functools import wraps
 
 from flask import Flask, request, jsonify, send_from_directory, send_file
@@ -39,9 +56,10 @@ app = Flask(
     static_folder="../frontend",
     static_url_path=""
 )
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB limit
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-app.config["SECRET_KEY"] = os.getenv("JWT_SECRET", "smartbiz_default_secret")
+app.config["SECRET_KEY"] = os.getenv("JWT_SECRET", "lazybiz_default_secret")
 app.config["UPLOAD_FOLDER"] = os.path.abspath(os.getenv("UPLOAD_FOLDER", "../data"))
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB max upload
 
@@ -61,7 +79,7 @@ if not mongo_uri:
 # Use certifi for SSL/TLS certificates to fix handshake issues on Windows
 ca = certifi.where()
 mongo_client = MongoClient(mongo_uri, tlsCAFile=ca, tlsAllowInvalidCertificates=True) if mongo_uri else None
-db = mongo_client.smartbiz if mongo_client else None
+db = mongo_client.lazybiz if mongo_client else None
 
 class LocalMockCollection:
     def __init__(self):
@@ -182,7 +200,9 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
         _update_job(job_id, progress=50, message="📈 MCP Tool: Generating visualizations...", steps={"clean": "completed", "analyze": "completed", "visualize": "running", "rag": "pending", "llm": "pending"})
 
         # 3. Visualize
+        print(f"\n[PIPELINE] STARTING VISUALIZATION STEP FOR: {filename}")
         viz = visualize_data(cleaned_df, analysis)
+        print(f"[PIPELINE] VISUALIZATION COMPLETED FOR: {filename}\n")
         _update_job(job_id, progress=75, message="🧠 RAG: Embedding insights...", steps={"clean": "completed", "analyze": "completed", "visualize": "completed", "rag": "running", "llm": "pending"})
 
         # 4. RAG Ingestion
@@ -191,13 +211,16 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
         except Exception:
             rag_result = {}
 
-        summary_text = analysis.get("summary_text", "")
-        if summary_text:
-            rag_engine.collection.upsert(
-                documents=[summary_text],
-                metadatas=[{"source": filename, "type": "analysis_summary", "file_hash": rag_result.get("file_hash", ""), "row_index": -2}],
-                ids=[f"{rag_result.get('file_hash', job_id)}_summary"]
-            )
+        try:
+            summary_text = analysis.get("summary_text", "")
+            if summary_text:
+                rag_engine.collection.upsert(
+                    documents=[summary_text],
+                    metadatas=[{"source": filename, "type": "analysis_summary", "file_hash": rag_result.get("file_hash", ""), "row_index": -2}],
+                    ids=[f"{rag_result.get('file_hash', job_id)}_summary"]
+                )
+        except Exception as e:
+            print(f"RAG Summary Ingestion Error: {e}")
         _update_job(job_id, progress=90, message="✨ LLM: Generating business insights...", steps={"clean": "completed", "analyze": "completed", "visualize": "completed", "rag": "completed", "llm": "running"})
 
         # 5. LLM Insights
@@ -313,7 +336,9 @@ def upload_csv():
     
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    print(f"UPLOADING: {filename} to {filepath}...")
     file.save(filepath)
+    print(f"UPLOAD COMPLETE: {filename} ({os.path.getsize(filepath)} bytes)")
     
     is_valid, msg, _ = validate_csv(filepath)
     if not is_valid: 
@@ -434,5 +459,11 @@ def static_proxy(path):
 def health(): return jsonify({"status": "ready", "db": db is not None})
 
 if __name__ == "__main__":
-    # Disable reloader to prevent [WinError 10038] on Windows
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True, use_reloader=False)
+    try:
+        print("\n[LazyBIZ] Initializing Server...")
+        # Disable reloader to prevent [WinError 10038] on Windows
+        app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True, use_reloader=False)
+    except Exception as e:
+        print(f"\n[FATAL SERVER ERROR] {e}")
+        import traceback
+        traceback.print_exc()

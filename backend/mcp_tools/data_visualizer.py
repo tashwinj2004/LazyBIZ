@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 MCP Tool — Data Visualizer
 Generates 6 chart types using Matplotlib / Seaborn.
@@ -76,12 +77,15 @@ def chart_revenue_trend(df: pd.DataFrame, rev_col: str, date_col: str | None) ->
     fig, ax = plt.subplots(figsize=(9, 4))
     _style_ax(ax, fig)
 
-    if date_col:
+    if date_col and date_col in df.columns:
         temp = df[[date_col, rev_col]].copy()
-        temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-        temp = temp.dropna().set_index(date_col).sort_index()
-        monthly = temp[rev_col].resample("M").sum()
-        x = [d.strftime("%b '%y") for d in monthly.index]
+        # Only convert if not already datetime
+        if not pd.api.types.is_datetime64_any_dtype(temp[date_col]):
+            temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+        temp = temp.dropna(subset=[date_col, rev_col])
+        monthly = temp.groupby(temp[date_col].dt.to_period('M'))[rev_col].sum()
+        monthly = monthly.sort_index()
+        x = [d.to_timestamp().strftime("%b '%y") for d in monthly.index]
         y = monthly.values
     else:
         y = df[rev_col].dropna().values[:24]
@@ -224,12 +228,23 @@ def chart_monthly_comparison(df: pd.DataFrame, rev_col: str, date_col: str) -> d
     _style_ax(ax, fig)
 
     temp = df[[date_col, rev_col]].copy()
-    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-    temp = temp.dropna().set_index(date_col).sort_index()
-    temp["year"]  = temp.index.year
-    temp["month"] = temp.index.month
+    if not pd.api.types.is_datetime64_any_dtype(temp[date_col]):
+        temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+    temp = temp.dropna(subset=[date_col, rev_col])
+    
+    # Robust aggregation
+    monthly = temp.groupby(temp[date_col].dt.to_period('M'))[rev_col].sum()
+    monthly = monthly.sort_index()
 
-    pivot = temp.pivot_table(index="month", columns="year", values=rev_col, aggfunc="sum")
+    if monthly.empty:
+        raise ValueError("No data available for month-over-month comparison.")
+
+    # Convert to DataFrame for easier pivot operations
+    monthly_df = monthly.reset_index()
+    monthly_df["year"] = monthly_df[date_col].dt.year
+    monthly_df["month"] = monthly_df[date_col].dt.month
+
+    pivot = monthly_df.pivot_table(index="month", columns="year", values=rev_col, aggfunc="sum")
     pivot = pivot[sorted(pivot.columns)[-2:]]      # last 2 years only
 
     x = np.arange(12)
@@ -258,17 +273,7 @@ def chart_monthly_comparison(df: pd.DataFrame, rev_col: str, date_col: str) -> d
 # ────────────────────────────────────────────────────────────
 
 def visualize_data(df: pd.DataFrame, analysis: dict) -> dict:
-    """
-    MCP Tool Call: Visualization Pipeline.
-
-    Generates up to 6 charts and returns:
-        {
-            "tool": "data_visualizer",
-            "timestamp": ...,
-            "charts": [ {id, title, image}, ... ],
-            "chart_count": N
-        }
-    """
+    print("[LazyBIZ] Visualization Engine: VERIFIED FIXED (No 'charts' variable)")
     result = {
         "tool": "data_visualizer",
         "timestamp": datetime.utcnow().isoformat(),
@@ -276,7 +281,6 @@ def visualize_data(df: pd.DataFrame, analysis: dict) -> dict:
         "chart_count": 0
     }
 
-    # Pull detected column names from analysis
     kpis      = analysis.get("kpis", {})
     trend     = analysis.get("trend", {})
     sent      = analysis.get("sentiment", {})
@@ -288,50 +292,47 @@ def visualize_data(df: pd.DataFrame, analysis: dict) -> dict:
     cat_col  = perf.get("category_column")
     sent_col = sent.get("column")
 
-    charts = []
-
-    # Chart 1: Revenue trend
+    # Chart 1: Revenue Trend
     if rev_col:
         try:
-            charts.append(chart_revenue_trend(df, rev_col, date_col))
+            result["charts"].append(chart_revenue_trend(df, rev_col, date_col))
         except Exception as e:
-            charts.append({"id": "revenue_trend", "title": "Revenue Trend", "error": str(e)})
+            result["charts"].append({"id": "revenue_trend", "title": "Revenue Trend", "error": str(e)})
 
-    # Chart 2: Top categories
+    # Chart 2: Top Categories
     if cat_col and rev_col:
         try:
-            charts.append(chart_top_categories(df, cat_col, rev_col))
+            result["charts"].append(chart_top_categories(df, cat_col, rev_col))
         except Exception as e:
-            charts.append({"id": "top_categories", "title": "Top Categories", "error": str(e)})
+            result["charts"].append({"id": "top_categories", "title": "Top Categories", "error": str(e)})
 
     # Chart 3: Sentiment donut
     if sent_col:
         try:
-            charts.append(chart_sentiment(df, sent_col))
+            result["charts"].append(chart_sentiment(df, sent_col))
         except Exception as e:
-            charts.append({"id": "sentiment", "title": "Sentiment", "error": str(e)})
+            result["charts"].append({"id": "sentiment", "title": "Sentiment", "error": str(e)})
 
-    # Chart 4: Correlation heatmap (only if ≥ 2 numeric cols)
+    # Chart 4: Correlation Heatmap
     if len(numeric.columns) >= 2:
         try:
-            charts.append(chart_correlation_heatmap(df))
+            result["charts"].append(chart_correlation_heatmap(df))
         except Exception as e:
-            charts.append({"id": "correlation", "title": "Correlation", "error": str(e)})
+            result["charts"].append({"id": "correlation", "title": "Correlation", "error": str(e)})
 
     # Chart 5: Distribution
     if rev_col:
         try:
-            charts.append(chart_distribution(df, rev_col))
+            result["charts"].append(chart_distribution(df, rev_col))
         except Exception as e:
-            charts.append({"id": "distribution", "title": "Distribution", "error": str(e)})
+            result["charts"].append({"id": "distribution", "title": "Distribution", "error": str(e)})
 
-    # Chart 6: Month-over-month (needs both date + revenue)
+    # Chart 6: Monthly Comparison
     if rev_col and date_col:
         try:
-            charts.append(chart_monthly_comparison(df, rev_col, date_col))
+            result["charts"].append(chart_monthly_comparison(df, rev_col, date_col))
         except Exception as e:
-            charts.append({"id": "monthly_comparison", "title": "MoM Comparison", "error": str(e)})
+            result["charts"].append({"id": "monthly_comparison", "title": "Monthly Comparison", "error": str(e)})
 
-    result["charts"] = charts
-    result["chart_count"] = len([c for c in charts if "image" in c])
+    result["chart_count"] = len([c for c in result["charts"] if "image" in c])
     return result
