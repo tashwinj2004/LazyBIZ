@@ -68,7 +68,7 @@ CHROMA_DB_PATH=../data/chroma_db
 
 1. **Start the Backend:**
    ```bash
-   python run.py
+   python app.py
    ```
    *The server will start on `http://127.0.0.1:5000`*
 
