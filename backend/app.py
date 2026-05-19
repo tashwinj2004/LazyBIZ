@@ -462,7 +462,7 @@ if __name__ == "__main__":
     try:
         print("\n[LazyBIZ] Initializing Server...")
         # Disable reloader to prevent [WinError 10038] on Windows
-        app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True, use_reloader=False)
+        app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
     except Exception as e:
         print(f"\n[FATAL SERVER ERROR] {e}")
         import traceback
