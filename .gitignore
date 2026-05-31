@@ -11,7 +11,8 @@ ENV/
 .env
 
 # Data & Databases
-data/
+data/*
+!data/.gitkeep
 backend/test_10k.csv
 
 # IDEs

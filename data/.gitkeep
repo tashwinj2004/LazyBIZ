@@ -1,0 +1,2 @@
+# This file ensures the data/ directory exists in the repository.
+# The actual CSV uploads and ChromaDB files are gitignored.

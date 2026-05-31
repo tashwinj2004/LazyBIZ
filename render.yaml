@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: lazybiz
+    runtime: python
+    region: oregon
+    plan: free
+
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300 --preload
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: ANONYMIZED_TELEMETRY
+        value: "False"
+      - key: CHROMA_TELEMETRY_IMPL
+        value: "INMEMORY"
+      - key: POSTHOG_DISABLED
+        value: "1"
+      - key: UPLOAD_FOLDER
+        value: "./data"
+      - key: CHROMA_DB_PATH
+        value: "./data/chroma_db"
+      # Set these secret values in the Render dashboard:
+      # GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, MONGO_URI, JWT_SECRET
