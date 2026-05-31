@@ -1,6 +1,13 @@
 import os
 import sys
 
+# Force unbuffered/line-buffered output so logs show up instantly on Render
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 # Force UTF-8 output on Windows to prevent emoji print crashes
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -78,7 +85,7 @@ if not mongo_uri:
 
 # Use certifi for SSL/TLS certificates to fix handshake issues on Windows
 ca = certifi.where()
-mongo_client = MongoClient(mongo_uri, tlsCAFile=ca, tlsAllowInvalidCertificates=True) if mongo_uri else None
+mongo_client = MongoClient(mongo_uri, tlsCAFile=ca, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000) if mongo_uri else None
 db = mongo_client.lazybiz if mongo_client else None
 
 class LocalMockCollection:
