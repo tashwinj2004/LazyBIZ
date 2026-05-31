@@ -25,13 +25,6 @@ LazyBIZ RAG Dashboard - Main Flask Application
 Cloud-Native Edition (MongoDB Atlas)
 """
 
-# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
 import json
 import datetime
 import threading
@@ -47,8 +40,7 @@ from werkzeug.utils import secure_filename
 import jwt
 import bcrypt
 
-from rag import RAGEngine
-from llm import LLMClient
+# Lazy import inside helpers to prevent startup blocks
 from mcp_tools import (
     validate_csv, list_uploaded_files, get_upload_metadata,
     clean_data, analyze_data, visualize_data
@@ -72,9 +64,25 @@ app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500MB max upload
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-# --- Initialize Services ---
-rag_engine = RAGEngine()
-llm_client = LLMClient()
+# --- Lazy Loading Helpers ---
+_rag_engine = None
+_llm_client = None
+
+def get_rag_engine():
+    global _rag_engine
+    if _rag_engine is None:
+        print("[LazyBIZ] Initializing RAG Engine (lazy-loaded)...")
+        from rag import RAGEngine
+        _rag_engine = RAGEngine()
+    return _rag_engine
+
+def get_llm_client():
+    global _llm_client
+    if _llm_client is None:
+        print("[LazyBIZ] Initializing LLM Client (lazy-loaded)...")
+        from llm import LLMClient
+        _llm_client = LLMClient()
+    return _llm_client
 
 import certifi
 
@@ -214,14 +222,14 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
 
         # 4. RAG Ingestion
         try:
-            rag_result = rag_engine.ingest_csv(filepath, filename, df=cleaned_df)
+            rag_result = get_rag_engine().ingest_csv(filepath, filename, df=cleaned_df)
         except Exception:
             rag_result = {}
 
         try:
             summary_text = analysis.get("summary_text", "")
             if summary_text:
-                rag_engine.collection.upsert(
+                get_rag_engine().collection.upsert(
                     documents=[summary_text],
                     metadatas=[{"source": filename, "type": "analysis_summary", "file_hash": rag_result.get("file_hash", ""), "row_index": -2}],
                     ids=[f"{rag_result.get('file_hash', job_id)}_summary"]
@@ -232,8 +240,8 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
 
         # 5. LLM Insights
         context = summary_text
-        if rag_engine.get_stats()["total_documents"] > 0:
-            rag_ctx = rag_engine.query(
+        if get_rag_engine().get_stats()["total_documents"] > 0:
+            rag_ctx = get_rag_engine().query(
                 "overall business performance revenue trends top products sentiment", 
                 n_results=8,
                 where={"source": filename}
@@ -241,7 +249,7 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
             if rag_ctx["context"]:
                 context = rag_ctx["context"] + "\n\n" + summary_text
 
-        insights = llm_client.generate_insights(context)
+        insights = get_llm_client().generate_insights(context)
         
         # Save Final Report
         if reports_col is not None:
@@ -434,14 +442,14 @@ def chat():
     where_clause = {"source": filename} if filename else None
     
     # Increase n_results for better coverage and search for the summary specifically
-    rctx = rag_engine.query(q, n_results=15, where=where_clause)
+    rctx = get_rag_engine().query(q, n_results=15, where=where_clause)
     
     # If a specific filename is selected, also try to fetch its global statistical summary
     # to provide the AI with the 'big picture' (total rows, columns, general stats)
     if filename:
         try:
             # Query ChromaDB for the 'analysis_summary' document for this source
-            summary_res = rag_engine.collection.get(
+            summary_res = get_rag_engine().collection.get(
                 where={"$and": [{"source": filename}, {"type": "analysis_summary"}]}
             )
             if summary_res and summary_res["documents"]:
@@ -451,7 +459,7 @@ def chat():
         except Exception as e:
             print(f"Chat: Could not fetch summary for {filename}: {e}")
 
-    ans = llm_client.chat_with_context(q, rctx["context"], rctx["sources"])
+    ans = get_llm_client().chat_with_context(q, rctx["context"], rctx["sources"])
     return jsonify({"answer": ans, "sources": rctx["sources"]})
 
 @app.route("/")
