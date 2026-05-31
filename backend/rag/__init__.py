@@ -1,13 +1,5 @@
 import os
 import sys
-
-# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
 import logging
 import hashlib
 import json
@@ -16,9 +8,20 @@ import pandas as pd
 import numpy as np
 import chromadb
 from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+class ONNXModelWrapper:
+    """Wrapper around ChromaDB's ONNX embedding function to match SentenceTransformer API."""
+    def __init__(self):
+        logger.info("Initializing ChromaDB ONNX MiniLM model...")
+        from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+        self.ef = ONNXMiniLM_L6_V2()
+    def encode(self, texts, batch_size=None, show_progress_bar=False, normalize_embeddings=True, convert_to_numpy=False):
+        embeddings = self.ef(texts)
+        if convert_to_numpy:
+            return np.array(embeddings)
+        return embeddings
 
 # ── Tunable constants ──────────────────────────────────────────────────────────
 CHUNK_ROWS   = 5    # Number of CSV rows grouped into one embedded document
@@ -45,10 +48,9 @@ class RAGEngine:
 
     @property
     def model(self):
-        """Lazy-load the embedding model (CPU only)."""
+        """Lazy-load the embedding model (CPU only, ultra-lightweight ONNX)."""
         if self._model is None:
-            logger.info("Loading SentenceTransformer model on CPU …")
-            self._model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+            self._model = ONNXModelWrapper()
         return self._model
 
     # ── Ingestion ──────────────────────────────────────────────────────────────
