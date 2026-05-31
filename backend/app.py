@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 
 # Force unbuffered/line-buffered output so logs show up instantly on Render
 try:
@@ -8,6 +9,13 @@ try:
 except Exception:
     pass
 
+# Configure root logger to output INFO logs directly to stdout
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
 # Force UTF-8 output on Windows to prevent emoji print crashes
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -15,10 +23,16 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-# MUST BE FIRST: Disable telemetry to prevent crashes on Python 3.9
+# MUST BE FIRST: Disable telemetry and limit threads to prevent PyTorch deadlocks on Render
 os.environ["CHROMA_TELEMETRY_IMPL"] = "INMEMORY"
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 os.environ["POSTHOG_DISABLED"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 """
 LazyBIZ RAG Dashboard - Main Flask Application
