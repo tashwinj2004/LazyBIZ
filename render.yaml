@@ -9,7 +9,7 @@ services:
       pip install --upgrade pip
       pip install -r backend/requirements.txt
 
-    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300 --preload
+    startCommand: cd backend && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 300
 
     envVars:
       - key: PYTHON_VERSION
