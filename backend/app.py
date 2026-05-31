@@ -2,6 +2,13 @@ import os
 import sys
 import logging
 
+# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 # Force unbuffered/line-buffered output so logs show up instantly on Render
 try:
     sys.stdout.reconfigure(line_buffering=True)

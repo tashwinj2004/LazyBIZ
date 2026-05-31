@@ -1,5 +1,13 @@
 import os
 import sys
+
+# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 import logging
 import hashlib
 import json
