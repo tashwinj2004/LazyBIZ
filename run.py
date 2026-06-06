@@ -12,19 +12,27 @@ def check_requirements():
 def main():
     root_dir = os.path.dirname(os.path.abspath(__file__))
     backend_dir = os.path.join(root_dir, "backend")
-    
-    print("\nStarting LazyBIZ RAG Analytics Platform...")
+
+    print("\nStarting LazyBIZ RAG Analytics Platform (FastAPI)...")
     print("---------------------------------------------")
-    
+
     # Ensure dependencies are installed
     check_requirements()
-    
+
     os.chdir(backend_dir)
-    print("Backend server is starting up. Press Ctrl+C to stop.")
-    
-    # Run the Flask app
+    print("Backend server is starting up on http://localhost:5001")
+    print("Press Ctrl+C to stop.")
+
+    # Run the FastAPI app via uvicorn
     try:
-        subprocess.check_call([sys.executable, "app.py"])
+        subprocess.check_call([
+            sys.executable, "-m", "uvicorn",
+            "app:app",
+            "--host", "0.0.0.0",
+            "--port", "5001",
+            "--reload",
+            "--workers", "1"
+        ])
     except KeyboardInterrupt:
         print("\nStopping server...")
 

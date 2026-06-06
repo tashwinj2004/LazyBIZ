@@ -20,9 +20,9 @@
 - **HTML5 & CSS3**: Modern UI with a focus on usability and data visualization.
 
 ### 2. Frameworks & Web
-- **Flask**: Lightweight WSGI web framework for API management.
-- **Flask-CORS**: Handles cross-origin resource sharing for secure frontend-backend communication.
-- **Werkzeug**: Provides robust WSGI utilities and secure file handling.
+- **FastAPI**: Modern, high-performance web framework for API management with native Pydantic validation and asynchronous routing.
+- **CORSMiddleware**: Handles cross-origin resource sharing for secure frontend-backend communication.
+- **Uvicorn**: Asynchronous ASGI server for production deployment.
 
 ### 3. Artificial Intelligence (AI) & LLMs
 - **Primary LLM**: Groq API (`llama-3.3-70b-versatile`) for ultra-fast reasoning.

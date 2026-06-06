@@ -16,7 +16,7 @@ LazyBIZ is a state-of-the-art Business Intelligence platform that transforms raw
 ## 🛠️ Technology Stack
 
 ### Backend
-- **Core:** Python (Flask)
+- **Core:** Python (FastAPI)
 - **Vector Database:** ChromaDB (local persistence)
 - **Metadata Database:** MongoDB Atlas
 - **Embeddings:** SentenceTransformers (`all-MiniLM-L6-v2`)
@@ -66,14 +66,22 @@ CHROMA_DB_PATH=../data/chroma_db
 
 ## 🏃 Running the Application
 
-1. **Start the Backend:**
+1. **Start the Backend (Recommended):**
    ```bash
+   python start.py
+   ```
+   *This automatically verifies/installs your venv dependencies and runs the FastAPI backend.*
+
+   Alternatively, if you prefer manual startup:
+   ```bash
+   .\venv\Scripts\activate
+   cd backend
    python app.py
    ```
-   *The server will start on `http://127.0.0.1:5000`*
+   *The server will start on `http://localhost:5001`*
 
 2. **Access the Dashboard:**
-   Open your browser and navigate to `http://127.0.0.1:5000`.
+   Open your browser and navigate to `http://localhost:5001`.
 
 ## 📖 How to Use
 

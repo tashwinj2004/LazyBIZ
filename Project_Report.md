@@ -87,7 +87,7 @@ The System Architecture of LazyBIZ is structured as a multi-layered, modular pla
     *   **Authentication:** Secured via **JWT (JSON Web Tokens)** to ensure stateless and protected access to business data.
 
 *   **Backend Processing Layer:**
-    *   **Core Framework:** Built using **Flask (Python)** for efficient request handling and pipeline management.
+    *   **Core Framework:** Built using **FastAPI (Python)** for high-performance request handling, asynchronous routing, and native request validation.
     *   **Data Manipulation:** Leverages **Pandas** and **NumPy** for high-speed preprocessing, cleaning, and statistical calculations of business datasets.
     *   **Job Management:** Handles the lifecycle of data ingestion, ensuring job status updates are reflected in real-time.
 
@@ -165,9 +165,8 @@ LazyBIZ is designed to run efficiently on both cloud infrastructure and high-per
 The software stack for LazyBIZ was selected to prioritize performance, security, and developer productivity.
 
 **Backend Framework:**
-- **Flask (Python 3.11):** Chosen for its lightweight nature and extensive library support for data science and AI.
-- **Werkzeug:** Used for secure file handling and WSGI utilities.
-- **Flask-CORS:** To manage secure cross-origin requests between the frontend and backend.
+- **FastAPI (Python 3.11):** Chosen for its high-performance asynchronous execution, automatic request validation with Pydantic, and native OpenAPI generation.
+- **CORSMiddleware:** Integrated into FastAPI to manage secure cross-origin requests between the frontend and backend.
 
 **Data Science & AI:**
 - **Pandas/NumPy:** The backbone for all data manipulation and mathematical computations.
@@ -230,7 +229,7 @@ The successful implementation of LazyBIZ highlights a significant shift from tra
 Furthermore, the **dual-provider LLM strategy** (utilizing Groq for speed and Gemini for fallback) proved to be a masterclass in system resilience. During periods of high latency or rate-limiting with the primary Groq API, the seamless transition to Google Gemini 1.5 ensured that the user experience remained uninterrupted and fast. This failover mechanism is vital for enterprise-level applications that require consistent availability. From a qualitative standpoint, the integration of the **DistilBERT model** for sentiment analysis allowed the system to go beyond the "what" of numerical data to explain the "why." For instance, a drop in revenue could be correlated with a surge in negative customer sentiment regarding a specific product launch, providing a holistic business view that raw numbers alone cannot convey. Lastly, the **modular MCP architecture** ensures that as new AI models or data processing tools emerge, they can be integrated with minimal disruption, making LazyBIZ a future-proof investment for any SME.
 
 ### Summary of Results & Discussion
-In summary, the LazyBIZ project has met and exceeded its primary performance benchmarks, delivering a platform that is both exceptionally fast and highly accurate. The synergy between high-speed backend processing (Pandas/Flask) and state-of-the-art AI reasoning (Groq/Gemini/ChromaDB) creates a user experience that feels intuitive yet powerful. The platform's ability to handle raw, messy data and transform it into actionable, visualized insights in under five seconds represents a major milestone in the democratization of Business Intelligence. By removing the technical gatekeeping of data science, LazyBIZ allows business owners to focus on execution rather than calculation.
+In summary, the LazyBIZ project has met and exceeded its primary performance benchmarks, delivering a platform that is both exceptionally fast and highly accurate. The synergy between high-speed backend processing (Pandas/FastAPI) and state-of-the-art AI reasoning (Groq/Gemini/ChromaDB) creates a user experience that feels intuitive yet powerful. The platform's ability to handle raw, messy data and transform it into actionable, visualized insights in under five seconds represents a major milestone in the democratization of Business Intelligence. By removing the technical gatekeeping of data science, LazyBIZ allows business owners to focus on execution rather than calculation.
 
 ---
 
