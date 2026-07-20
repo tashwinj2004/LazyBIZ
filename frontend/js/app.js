@@ -81,10 +81,13 @@ const COUNTRY_COORDS = {
 function render() {
     const app = document.getElementById('app');
     if (!APP.token || !APP.user) {
-        // Check hash for register
+        // Check hash for register or forgot password
         if (window.location.hash === '#register') {
             app.innerHTML = renderRegisterPage();
             bindRegisterEvents();
+        } else if (window.location.hash === '#forgot-password') {
+            app.innerHTML = renderForgotPasswordPage();
+            bindForgotPasswordEvents();
         } else {
             app.innerHTML = renderLoginPage();
             bindLoginEvents();
@@ -214,6 +217,7 @@ function userInitials() {
 }
 
 // ============================================
+// ============================================
 // LOGIN PAGE
 // ============================================
 function renderLoginPage() {
@@ -248,13 +252,16 @@ function renderLoginPage() {
                 </div>
                 <div class="input-group">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" class="input-field" placeholder="Enter your password" required autocomplete="current-password">
+                    <div style="position: relative; display: flex; align-items: center; width: 100%;">
+                        <input type="password" id="login-password" class="input-field" placeholder="Enter your password" required autocomplete="current-password" style="padding-right: 44px; width: 100%;">
+                        <span class="material-icons-outlined password-toggle" style="position: absolute; right: 14px; cursor: pointer; color: var(--on-surface-muted); font-size: 20px; user-select: none;">visibility</span>
+                    </div>
                 </div>
                 <div class="auth-extras">
                     <label class="auth-checkbox">
                         <input type="checkbox" checked> Remember me
                     </label>
-                    <a href="#">Forgot password?</a>
+                    <a href="#forgot-password" id="goto-forgot">Forgot password?</a>
                 </div>
                 <button type="submit" class="btn btn-primary btn-block btn-lg" id="login-btn">
                     Sign In
@@ -270,6 +277,19 @@ function bindLoginEvents() {
     const errBox = document.getElementById('login-error');
     const errText = document.getElementById('login-error-text');
     const btn = document.getElementById('login-btn');
+
+    // Show/hide password
+    const toggle = form?.querySelector('.password-toggle');
+    const pwdInput = document.getElementById('login-password');
+    toggle?.addEventListener('click', () => {
+        if (pwdInput.type === 'password') {
+            pwdInput.type = 'text';
+            toggle.textContent = 'visibility_off';
+        } else {
+            pwdInput.type = 'password';
+            toggle.textContent = 'visibility';
+        }
+    });
 
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -300,6 +320,12 @@ function bindLoginEvents() {
     document.getElementById('goto-register')?.addEventListener('click', (e) => {
         e.preventDefault();
         window.location.hash = '#register';
+        render();
+    });
+
+    document.getElementById('goto-forgot')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.hash = '#forgot-password';
         render();
     });
 }
@@ -342,8 +368,15 @@ function renderRegisterPage() {
                     <input type="email" id="reg-email" class="input-field" placeholder="name@company.com" required autocomplete="email">
                 </div>
                 <div class="input-group">
+                    <label for="reg-phone">Phone number</label>
+                    <input type="tel" id="reg-phone" class="input-field" placeholder="e.g. +1234567890" required autocomplete="tel">
+                </div>
+                <div class="input-group">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" class="input-field" placeholder="Min. 6 characters" required minlength="6" autocomplete="new-password">
+                    <div style="position: relative; display: flex; align-items: center; width: 100%;">
+                        <input type="password" id="reg-password" class="input-field" placeholder="Min. 6 characters" required minlength="6" autocomplete="new-password" style="padding-right: 44px; width: 100%;">
+                        <span class="material-icons-outlined password-toggle" style="position: absolute; right: 14px; cursor: pointer; color: var(--on-surface-muted); font-size: 20px; user-select: none;">visibility</span>
+                    </div>
                 </div>
                 <label class="auth-checkbox">
                     <input type="checkbox" id="reg-terms" required> I agree to the <a href="#" style="margin-left:4px">Terms of Service</a>&nbsp;and&nbsp;<a href="#">Privacy Policy</a>
@@ -363,6 +396,19 @@ function bindRegisterEvents() {
     const errText = document.getElementById('register-error-text');
     const btn = document.getElementById('register-btn');
 
+    // Show/hide password
+    const toggle = form?.querySelector('.password-toggle');
+    const pwdInput = document.getElementById('reg-password');
+    toggle?.addEventListener('click', () => {
+        if (pwdInput.type === 'password') {
+            pwdInput.type = 'text';
+            toggle.textContent = 'visibility_off';
+        } else {
+            pwdInput.type = 'password';
+            toggle.textContent = 'visibility';
+        }
+    });
+
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();
         errBox?.classList.remove('visible');
@@ -371,11 +417,12 @@ function bindRegisterEvents() {
 
         const name = document.getElementById('reg-name').value;
         const email = document.getElementById('reg-email').value;
+        const phone = document.getElementById('reg-phone').value;
         const password = document.getElementById('reg-password').value;
 
         const data = await apiFetch('/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ name, email, password })
+            body: JSON.stringify({ name, email, phone, password })
         });
 
         if (data.error) {
@@ -392,6 +439,107 @@ function bindRegisterEvents() {
     });
 
     document.getElementById('goto-login')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.hash = '';
+        render();
+    });
+}
+
+// ============================================
+// FORGOT PASSWORD PAGE
+// ============================================
+function renderForgotPasswordPage() {
+    return `
+    <div class="auth-page">
+        <div class="auth-brand">
+            <div class="auth-brand-content">
+                <div class="auth-logo">
+                    <div class="auth-logo-icon"><span class="material-icons-outlined">hub</span></div>
+                    <span class="auth-logo-text">LazyBIZ</span>
+                </div>
+                <p class="auth-tagline">Reset your account password.<br>Verify your registered phone number to proceed.</p>
+                <ul class="auth-features">
+                    <li><span class="material-icons-outlined">lock_reset</span> Secure instant password reset</li>
+                    <li><span class="material-icons-outlined">sms</span> Verification link simulation</li>
+                    <li><span class="material-icons-outlined">shield</span> Enforced credential safety</li>
+                </ul>
+            </div>
+        </div>
+        <div class="auth-form-panel">
+            <h1 class="auth-form-title">Reset password</h1>
+            <p class="auth-form-subtitle">Enter your registered phone number and new password.</p>
+            <div class="auth-error" id="forgot-error">
+                <span class="material-icons-outlined" style="font-size:16px">error</span>
+                <span id="forgot-error-text"></span>
+            </div>
+            <form class="auth-form" id="forgot-form">
+                <div class="input-group">
+                    <label for="forgot-phone">Registered Phone Number</label>
+                    <input type="tel" id="forgot-phone" class="input-field" placeholder="e.g. +1234567890" required autocomplete="tel">
+                </div>
+                <div class="input-group">
+                    <label for="forgot-password">New Password</label>
+                    <div style="position: relative; display: flex; align-items: center; width: 100%;">
+                        <input type="password" id="forgot-password" class="input-field" placeholder="Min. 6 characters" required minlength="6" autocomplete="new-password" style="padding-right: 44px; width: 100%;">
+                        <span class="material-icons-outlined password-toggle" style="position: absolute; right: 14px; cursor: pointer; color: var(--on-surface-muted); font-size: 20px; user-select: none;">visibility</span>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block btn-lg" id="forgot-btn">
+                    Reset &amp; Sign In
+                </button>
+            </form>
+            <p class="auth-switch"><a href="#" id="forgot-goto-login">Back to Sign In</a></p>
+        </div>
+    </div>`;
+}
+
+function bindForgotPasswordEvents() {
+    const form = document.getElementById('forgot-form');
+    const errBox = document.getElementById('forgot-error');
+    const errText = document.getElementById('forgot-error-text');
+    const btn = document.getElementById('forgot-btn');
+
+    // Show/hide password
+    const toggle = form?.querySelector('.password-toggle');
+    const pwdInput = document.getElementById('forgot-password');
+    toggle?.addEventListener('click', () => {
+        if (pwdInput.type === 'password') {
+            pwdInput.type = 'text';
+            toggle.textContent = 'visibility_off';
+        } else {
+            pwdInput.type = 'password';
+            toggle.textContent = 'visibility';
+        }
+    });
+
+    form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errBox?.classList.remove('visible');
+        btn.disabled = true;
+        btn.textContent = 'Resetting...';
+
+        const phone = document.getElementById('forgot-phone').value;
+        const password = document.getElementById('forgot-password').value;
+
+        const data = await apiFetch('/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ phone, password })
+        });
+
+        if (data.error) {
+            if (errText) errText.textContent = data.error;
+            errBox?.classList.add('visible');
+            btn.disabled = false;
+            btn.textContent = 'Reset & Sign In';
+            return;
+        }
+
+        setAuth(data.token, data.user);
+        showToast('Password reset successfully!', 'success');
+        navigate('analytics');
+    });
+
+    document.getElementById('forgot-goto-login')?.addEventListener('click', (e) => {
         e.preventDefault();
         window.location.hash = '';
         render();

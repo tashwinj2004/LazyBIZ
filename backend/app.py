@@ -183,6 +183,8 @@ if db is not None:
         jobs_col.create_index("job_id", unique=True)
         reports_col.create_index("file_id", unique=True)
         users_col.create_index("email", unique=True)
+        # Seed John's account with a phone number for Forgot Password testing
+        users_col.update_one({"email": "john@gmail.com"}, {"$set": {"phone": "+1234567890"}})
         print("MongoDB: Connected and Indices created.")
     except Exception as e:
         print(f"MongoDB Connection Warning: {e}")
@@ -321,6 +323,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 class RegisterRequest(BaseModel):
     name: str
     email: str
+    phone: str
+    password: str
+
+class ResetPasswordRequest(BaseModel):
+    phone: str
     password: str
 
 class LoginRequest(BaseModel):
@@ -346,6 +353,7 @@ async def register(body: RegisterRequest):
     users_col.insert_one({
         "name": body.name,
         "email": body.email,
+        "phone": body.phone,
         "password_hash": hashed,
         "created_at": datetime.datetime.utcnow().isoformat()
     })
@@ -354,6 +362,19 @@ async def register(body: RegisterRequest):
         SECRET_KEY, algorithm="HS256"
     )
     return {"token": token, "user": {"name": body.name, "email": body.email}}
+
+@app.post("/api/auth/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    user = users_col.find_one({"phone": body.phone})
+    if not user:
+        raise HTTPException(status_code=404, detail="Phone number not registered")
+    hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    users_col.update_one({"phone": body.phone}, {"$set": {"password_hash": hashed}})
+    token = jwt.encode(
+        {"email": user["email"], "name": user["name"], "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)},
+        SECRET_KEY, algorithm="HS256"
+    )
+    return {"token": token, "user": {"name": user["name"], "email": user["email"]}}
 
 @app.post("/api/auth/login")
 async def login(body: LoginRequest):
