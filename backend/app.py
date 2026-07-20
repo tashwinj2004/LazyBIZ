@@ -290,6 +290,13 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
                     completed_at=datetime.datetime.utcnow().isoformat(),
                     steps={"clean": "completed", "analyze": "completed", "visualize": "completed", "rag": "completed", "llm": "completed"})
 
+        # Clean up temp file after pipeline is done
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+
     except Exception as e:
         error_msg = f"{str(e)}\n{traceback.format_exc()}"
         print(f"PIPELINE ERROR: {error_msg}")
@@ -365,27 +372,36 @@ async def upload_csv(file: UploadFile = File(...), user_email: str = Depends(get
         raise HTTPException(status_code=400, detail="CSV only")
 
     filename = secure_filename(file.filename)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    print(f"UPLOADING: {filename} to {filepath}...")
-
     contents = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(contents)
-    print(f"UPLOAD COMPLETE: {filename} ({os.path.getsize(filepath)} bytes)")
+    print(f"UPLOADING: {filename} ({len(contents)} bytes) — storing in MongoDB...")
 
-    is_valid, msg, _ = validate_csv(filepath)
+    # Validate by writing to a temp file
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        is_valid, msg, _ = validate_csv(tmp_path)
+    finally:
+        os.remove(tmp_path)  # Always clean up temp file
+
     if not is_valid:
-        os.remove(filepath)
         raise HTTPException(status_code=400, detail=msg)
 
     fid = str(uuid.uuid4())
+    # Store CSV bytes directly in MongoDB — no local disk dependency
+    import base64
     uploads_col.insert_one({
-        "file_id": fid, "file_name": filename, "filepath": filepath,
-        "file_size": os.path.getsize(filepath),
+        "file_id": fid,
+        "file_name": filename,
+        "file_size": len(contents),
+        "file_data": base64.b64encode(contents).decode("utf-8"),  # Store as base64 string
         "upload_time": datetime.datetime.utcnow().isoformat(),
         "status": "uploaded",
         "user_email": user_email
     })
+    print(f"UPLOAD COMPLETE: {filename} stored in MongoDB Atlas.")
     return {"file_id": fid, "file_name": filename, "message": "Uploaded"}
 
 @app.get("/api/uploads")
@@ -412,13 +428,25 @@ async def start_analysis(body: StartAnalysisRequest, background_tasks: Backgroun
     fdoc = uploads_col.find_one({"file_id": body.file_id, "user_email": user_email})
     if not fdoc:
         raise HTTPException(status_code=404, detail="File not found")
- 
+
+    # Reconstruct temp file from MongoDB-stored bytes
+    import tempfile, base64
+    file_data = fdoc.get("file_data", "")
+    if not file_data:
+        raise HTTPException(status_code=500, detail="File data missing from database. Please re-upload.")
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
+    tmp.write(base64.b64decode(file_data))
+    tmp.flush()
+    tmp.close()
+    tmp_filepath = tmp.name
+
     jid = str(uuid.uuid4())
     _new_job(jid, body.file_id, user_email)
     uploads_col.update_one({"file_id": body.file_id}, {"$set": {"status": "processing"}})
- 
+
     # FastAPI BackgroundTasks runs in a thread pool — equivalent to threading.Thread
-    background_tasks.add_task(_run_pipeline, jid, body.file_id, fdoc["filepath"], fdoc["file_name"])
+    background_tasks.add_task(_run_pipeline, jid, body.file_id, tmp_filepath, fdoc["file_name"])
     return {"job_id": jid}
  
 @app.get("/api/job/{jid}")
