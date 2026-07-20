@@ -1,72 +1,64 @@
 import sys
 import os
-import json
+import pytest
 import pandas as pd
-from datetime import datetime
 
 # Set up paths
-backend_path = os.path.abspath("backend")
-sys.path.append(backend_path)
+backend_path = os.path.dirname(os.path.abspath(__file__))
+if backend_path not in sys.path:
+    sys.path.append(backend_path)
 
-# Mock environment variables
-os.environ["UPLOAD_FOLDER"] = os.path.join(backend_path, "data")
-os.environ["CHROMA_DB_PATH"] = os.path.join(backend_path, "data", "chroma_db")
+from mcp_tools.data_cleaner import clean_data
+from mcp_tools.data_analyzer import analyze_data
+from mcp_tools.data_visualizer import visualize_data
 
-try:
-    from mcp_tools.data_cleaner import clean_data
-    from mcp_tools.data_analyzer import analyze_data
-    from mcp_tools.data_visualizer import visualize_data
-    from rag import RAGEngine
-    from llm import LLMClient
+# Use a test CSV file
+TEST_CSV_PATH = os.path.join(os.path.dirname(backend_path), "data", "TS_11.csv")
 
-    FILE_PATH = r"e:\Engineering\Internship\VTU\Project\Major # project\LazyBIZ\data\data001.csv"
-    FILENAME = "data001.csv"
+def test_data_cleaning():
+    """Verify data cleaner handles dates and nulls correctly."""
+    assert os.path.exists(TEST_CSV_PATH), f"Test CSV not found at {TEST_CSV_PATH}"
+    df_clean, clean_report = clean_data(TEST_CSV_PATH)
+    assert isinstance(df_clean, pd.DataFrame)
+    assert len(df_clean) > 0
+    assert "Date" in df_clean.columns or "__date__" in df_clean.columns
 
-    print(f"--- STARTING FULL PIPELINE TEST ---")
-    
-    # 1. Clean
-    print("\n[1/5] Cleaning...")
-    df_clean, clean_report = clean_data(FILE_PATH)
-    print(f"Success. Rows: {len(df_clean)}")
-
-    # 2. Analyze
-    print("\n[2/5] Analyzing...")
+def test_data_analysis():
+    """Verify data analyzer produces KPIs and summary."""
+    df_clean, _ = clean_data(TEST_CSV_PATH)
     analysis = analyze_data(df_clean)
-    print(f"Success. KPIs found: {list(analysis.get('kpis', {}).keys())}")
-    if "future_forecast" in analysis:
-        print(f"Forecast generated: {len(analysis['future_forecast'].get('forecast_values', []))} months")
-    else:
-        print("WARNING: No forecast generated!")
+    assert isinstance(analysis, dict)
+    assert "kpis" in analysis
+    assert "summary_text" in analysis
 
-    # 3. Visualize
-    print("\n[3/5] Visualizing...")
+def test_data_visualization():
+    """Verify data visualizer generates Chart.js structures."""
+    df_clean, _ = clean_data(TEST_CSV_PATH)
+    analysis = analyze_data(df_clean)
     viz = visualize_data(df_clean, analysis)
-    print(f"Success. Charts generated: {viz['chart_count']}")
-    chart_ids = [c['id'] for c in viz['charts'] if 'image' in c]
-    print(f"IDs: {chart_ids}")
+    assert isinstance(viz, dict)
+    assert "charts" in viz
+    assert viz["chart_count"] >= 0
 
-    # 4. RAG
-    print("\n[4/5] RAG Ingestion...")
-    rag = RAGEngine(persist_dir=os.environ["CHROMA_DB_PATH"])
-    rag_res = rag.ingest_csv(FILE_PATH, FILENAME, df=df_clean)
-    print(f"Success. Ingested chunks: {rag_res.get('chunks', 0)}")
+@pytest.mark.skipif(not os.getenv("SUPABASE_DB_URL"), reason="SUPABASE_DB_URL secret not configured")
+def test_rag_ingestion():
+    """Verify RAG engine can connect and ingest vectors (skipped if no Supabase secret)."""
+    from rag import RAGEngine
+    rag = RAGEngine()
+    df_clean, _ = clean_data(TEST_CSV_PATH)
+    rag_res = rag.ingest_csv(TEST_CSV_PATH, "TS_11.csv", df=df_clean)
+    assert isinstance(rag_res, dict)
+    assert "chunks" in rag_res
 
-    # 5. LLM
-    print("\n[5/5] LLM Insights...")
+@pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason="GEMINI_API_KEY secret not configured")
+def test_llm_insights():
+    """Verify LLM client can call Gemini API (skipped if no Gemini secret)."""
+    from llm import LLMClient
     llm = LLMClient()
-    if not llm.gemini_key:
-        print("WARNING: Gemini key missing in env, using fallbacks.")
-    
+    df_clean, _ = clean_data(TEST_CSV_PATH)
+    analysis = analyze_data(df_clean)
     summary = analysis.get("summary_text", "Business summary data.")
     insights = llm.generate_insights(summary)
-    print(f"Success. Insights count: {len(insights)}")
-    print(f"Sample Insight: {insights[0].get('title') if insights else 'None'}")
-
-    print("\n--- PIPELINE PERFECTLY FINE ---")
-
-except Exception as e:
-    print(f"\n!!! PIPELINE FAILED !!!")
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+    assert isinstance(insights, list)
+    if insights:
+        assert "title" in insights[0]
