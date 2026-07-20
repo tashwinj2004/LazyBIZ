@@ -1,86 +1,111 @@
-# LazyBIZ — Enterprise-Grade Cloud-Native Business Intelligence Platform
+# LazyBIZ — AI-Powered Business Intelligence & Analytics Platform
 
-LazyBIZ is a production-ready, cloud-native Business Intelligence platform that transforms raw data into high-value business insights. The platform leverages a state-of-the-art Model Context Protocol (MCP) architecture, stateful Agentic workflows (LangGraph), and cloud-hosted vector search (Supabase + pgvector) to provide automated data cleaning, statistical analysis, interactive charts, and natural-language data querying.
+LazyBIZ is an enterprise-ready, cloud-native Business Intelligence (BI) platform that transforms raw business data into actionable visual insights and natural-language intelligence. Built using a modern cloud architecture, it automates data cleaning, generates professional statistical summaries, creates interactive dashboards, and provides a stateful AI Chatbot to converse with your datasets.
 
 ---
 
-## 🚀 Key Architectural Upgrades
+## 🌟 Key Features
 
-### 1. Cloud-Native Vector DB: Supabase + pgvector
-*   **ChromaDB completely replaced.** Local sqlite3-based vector databases are lost when platforms like Render restart. LazyBIZ now stores embeddings persistently in a cloud-hosted **PostgreSQL instance on Supabase** using the `pgvector` extension.
-*   **768-Dimension Embeddings:** Uses the full output range of Gemini's `text-embedding-004` model.
-*   **Fast Indexing:** Uses an `IVFFlat` cosine distance index on Supabase for sub-millisecond retrieval.
-*   **User Isolation:** Data is fully partitioned on retrieval, update, and deletion based on JWT authentication. Users only see and query their own datasets and history.
+### 📊 Automated Data Cleaning
+*   **Missing Data Imputation:** Smart handling of missing values, nulls, and outliers.
+*   **Format Standardization:** Automatically normalizes date formats and strips anomalous characters.
+*   **Duplicate Elimination:** Instantly identifies and removes redundant data rows.
 
-### 2. Model Context Protocol (MCP) Server
-*   LazyBIZ exposes its core business intelligence tools (`clean_dataset`, `analyze_dataset`, `visualize_dataset`, `query_business_data`) through a standardized **MCP Server** (`backend/mcp_tools/mcp_server.py`).
-*   This server implements the JSON-RPC 2.0 protocol over standard input/output (`stdio`), allowing compatible AI hosts like **Claude Desktop** and **Cursor IDE** to directly consume your business analysis engine.
+### 📈 Instant Analytics & Visualization
+*   **KPI Generation:** Automatically extracts key business metrics (Revenue, sales growth, category breakdowns).
+*   **Interactive Charts:** Powers rich data visualizations using Chart.js.
+*   **Automated Forecasting:** Generates basic business forecasts and trend predictions.
 
-### 3. LangGraph Agentic Workflow
-*   Replaces basic `if/else` logic with a stateful, directed graph agent:
-    *   **Classify Node:** Detects query intent (data vs. visualization vs. general).
-    *   **RAG Retrieve Node:** Connects to Supabase to fetch context and pre-generated analysis summaries.
-    *   **Visualization Node:** Automatically guides users to interactive charts.
-    *   **Generate Node:** Calls the generative model to write context-grounded business answers.
+### 💬 Stateful AI Chat Agent (RAG)
+*   **Semantic Data Search:** Searches your data contextually using high-dimensional embeddings stored in a cloud vector database.
+*   **Intent Classification:** Dynamically routes queries (e.g., distinguishing between requests for charts, calculations, or general chat).
+*   **Grounded QA:** The chatbot answers questions strictly using your uploaded CSV data to prevent AI hallucinations.
 
-### 4. MLOps CI/CD Pipeline
-*   Configured inside `.github/workflows/mlops_pipeline.yml`.
-*   Every push or pull request to the `main` branch triggers:
-    1.  Ruff code checking.
-    2.  Pytest backend unit tests.
-    3.  Schema validation on LLM output.
-    4.  Automatic webhook trigger for Render deployment.
+### 🔒 Enterprise User Isolation
+*   **Strict Partitioning:** Full account segregation. Users can only upload, list, delete, and query their own datasets and history.
+*   **JWT Authorization:** Secure token-based access to all API routes.
+
+### 🔌 Model Context Protocol (MCP) Server
+*   **External Integration:** Exposes the data engine tools via the Model Context Protocol (MCP). Allows client editors like Cursor IDE or Claude Desktop to use LazyBIZ tools directly.
 
 ---
 
 ## 🛠️ Technology Stack
 
-*   **Backend:** FastAPI (Python 3.11)
-*   **Database:** MongoDB Atlas (User data/reports), Supabase pgvector (Vector store)
-*   **Orchestration:** LangGraph & LangChain Core
-*   **MCP Protocol:** FastMCP Server
-*   **Primary LLM Model:** Gemini Flash (`gemini-1.5-flash`) & Gemini Embedding (`text-embedding-004`)
-*   **Frontend:** Vanilla ES6+ SPA, Chart.js, Vanilla CSS Glassmorphism
+*   **Frontend:** Vanilla ES6+ JS, Chart.js, Responsive Glassmorphism CSS.
+*   **Backend:** FastAPI (Python 3.11).
+*   **Primary Database:** MongoDB Atlas (Handles user accounts, job status, and preprocessed reports).
+*   **Vector Database:** Supabase PostgreSQL with `pgvector` extension (Stores document embeddings).
+*   **AI Engine:** LangGraph (Stateful workflow orchestrator) & Google Gemini (`gemini-1.5-flash` / `text-embedding-004`).
 
 ---
 
-## 📦 Local Installation
+## 🚀 Setup & Installation
 
-### 1. Requirements
+### 1. Prerequisites
 *   Python 3.11
-*   MongoDB Atlas Account
-*   Supabase Account (with pgvector enabled)
-*   Gemini API Key (and optionally Groq / OpenRouter)
+*   MongoDB Atlas connection string
+*   Supabase PostgreSQL instance
+*   Gemini API Key
 
-### 2. Environment Setup
-Create `backend/.env` containing:
+### 2. Configure Environment Variables
+Create a `.env` file inside the `backend/` directory:
 ```env
 JWT_SECRET=your_jwt_secret
-MONGO_URI=your_mongodb_atlas_uri
+MONGO_URI=your_mongodb_connection_string
 GEMINI_API_KEY=your_gemini_api_key
 
-# Supabase pgvector DB Urls
-# Local (Direct / IPv6):
-SUPABASE_DB_URL=postgresql://postgres:[PASSWORD]@db.xmkbjytyabwufumunhkb.supabase.co:5432/postgres
-# Render (Session pooler / IPv4):
-SUPABASE_DB_URL_IPV4=postgresql://postgres.xmkbjytyabwufumunhkb:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+# Supabase PostgreSQL connection strings
+SUPABASE_DB_URL=postgresql://postgres:[PASSWORD]@db.yourhost.supabase.co:5432/postgres
+SUPABASE_DB_URL_IPV4=postgresql://postgres.yourhost:[PASSWORD]@aws-0.pooler.supabase.com:5432/postgres
 ```
 
-### 3. Create & Install Virtual Environment
-```bash
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt
-```
+### 3. Installation
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/tashwinj2004/LazyBIZ.git
+    cd LazyBIZ
+    ```
+2.  **Create and Activate Virtual Environment:**
+    ```bash
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+    ```
+3.  **Install Dependencies:**
+    ```bash
+    pip install -r backend/requirements.txt
+    ```
 
-### 4. Run the Platform
+---
+
+## 🏃 Running the Application
+
+### Option A: Local Run (Development)
+Activate your virtual environment and run the launcher:
 ```bash
 .\venv\Scripts\python.exe run.py
 ```
-Open `http://localhost:5001` in your browser.
+Open **`http://localhost:5001`** in your browser.
+
+### Option B: Docker Compose (Production)
+Run the application in a detached background container:
+```bash
+docker compose up --build -d
+```
+Open **`http://localhost:5001`** in your browser.
 
 ---
 
-## 🔒 Security & Privacy Enforcements
-*   **JWT Protected:** Authorization Bearer tokens guard all API operations.
-*   **Strict Scope Querying:** Database queries explicitly query by `user_email` mapped from the verified JWT payload. Uploads and reports cannot leak across accounts.
+## 📂 Project Structure
+```text
+├── backend/
+│   ├── llm/                 # LangGraph Agent workflow & LLM prompt logic
+│   ├── mcp_tools/           # MCP server & core business logic tools
+│   ├── rag/                 # Supabase PostgreSQL + pgvector engine
+│   ├── app.py               # Main FastAPI Application routes
+│   └── requirements.txt     # Python backend dependencies
+├── frontend/                # SPA files (HTML, CSS, JS, Assets)
+├── .github/workflows/       # MLOps CI/CD test and lint pipelines
+├── Dockerfile               # App container build definition
+└── docker-compose.yml       # Multi-container orchestration schema
+```
