@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: deadmousefuneral009/lazybiz:latest
     container_name: lazybiz_app
     ports:
       - "5001:5001"
