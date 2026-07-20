@@ -3,11 +3,16 @@ import sys
 import os
 
 def check_requirements():
-    print("Installing requirements.txt to ensure all packages are available...")
+    print("Checking packages inside virtual environment...")
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "backend/requirements.txt"])
+        # Use the local venv pip to prevent global pip connection failures
+        pip_path = os.path.join("venv", "Scripts", "pip.exe")
+        if os.path.exists(pip_path):
+            subprocess.check_call([pip_path, "install", "-r", "backend/requirements.txt"])
+        else:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "backend/requirements.txt"])
     except subprocess.CalledProcessError as e:
-        print(f"Error installing requirements: {e}")
+        print(f"Warning installing requirements: {e}")
 
 def main():
     root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +33,7 @@ def main():
         subprocess.check_call([
             sys.executable, "-m", "uvicorn",
             "app:app",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", "5001",
             "--reload",
             "--workers", "1"

@@ -1,0 +1,31 @@
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Ignore version control and IDE files
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Ignore local environment variables (we will mount or pass them dynamically)
+.env
+backend/.env
+
+# Ignore local database/upload files (we will use docker volume mounts instead)
+data/
+backend/data/
+**/chrome_db/
+**/*.db
+**/*.sqlite
+
+# Miscellaneous
+.DS_Store
+*.log

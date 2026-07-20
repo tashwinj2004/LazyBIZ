@@ -2,13 +2,6 @@ import os
 import sys
 import logging
 
-# Monkey-patch sqlite3 for ChromaDB compatibility on older systems
-try:
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    pass
-
 # Force unbuffered/line-buffered output so logs show up instantly on Render
 try:
     sys.stdout.reconfigure(line_buffering=True)
@@ -30,14 +23,10 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-# MUST BE FIRST: Disable telemetry and limit threads to prevent PyTorch deadlocks on Render
-os.environ["CHROMA_TELEMETRY_IMPL"] = "INMEMORY"
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
-os.environ["POSTHOG_DISABLED"] = "1"
+# Limit CPU threads to avoid resource exhaustion on Render free tier
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -199,9 +188,9 @@ else:
     reports_col = LocalMockCollection()
 
 # --- Helper Functions ---
-def _new_job(job_id: str, file_id: str):
+def _new_job(job_id: str, file_id: str, user_email: str):
     jobs_col.insert_one({
-        "job_id": job_id, "file_id": file_id, "status": "queued",
+        "job_id": job_id, "file_id": file_id, "user_email": user_email, "status": "queued",
         "progress": 0, "message": "Queued...",
         "steps": {"clean": "pending", "analyze": "pending", "visualize": "pending", "rag": "pending", "llm": "pending"},
         "created_at": datetime.datetime.utcnow().isoformat(),
@@ -234,22 +223,30 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
         _update_job(job_id, progress=75, message="🧠 RAG: Embedding insights...",
                     steps={"clean": "completed", "analyze": "completed", "visualize": "completed", "rag": "running", "llm": "pending"})
 
-        # 4. RAG Ingestion
+        # 4. RAG Ingestion (pgvector via Supabase)
+        rag_result = {}
         try:
             rag_result = get_rag_engine().ingest_csv(filepath, filename, df=cleaned_df)
-        except Exception:
-            rag_result = {}
+        except Exception as e:
+            print(f"RAG Ingestion Warning: {e}")
 
         try:
             summary_text = analysis.get("summary_text", "")
             if summary_text:
-                get_rag_engine().collection.upsert(
-                    documents=[summary_text],
-                    metadatas=[{"source": filename, "type": "analysis_summary", "file_hash": rag_result.get("file_hash", ""), "row_index": -2}],
-                    ids=[f"{rag_result.get('file_hash', job_id)}_summary"]
+                fhash = rag_result.get("file_hash", job_id)
+                get_rag_engine().ingest_text(
+                    text=summary_text,
+                    doc_id=f"{fhash}_summary",
+                    metadata={
+                        "source": filename,
+                        "file_hash": fhash,
+                        "row_start": -2,
+                        "row_end": -2,
+                        "doc_type": "analysis_summary",
+                    },
                 )
         except Exception as e:
-            print(f"RAG Summary Ingestion Error: {e}")
+            print(f"RAG Summary Ingestion Warning: {e}")
 
         _update_job(job_id, progress=90, message="✨ LLM: Generating business insights...",
                     steps={"clean": "completed", "analyze": "completed", "visualize": "completed", "rag": "completed", "llm": "running"})
@@ -389,13 +386,14 @@ async def upload_csv(file: UploadFile = File(...), user_email: str = Depends(get
         "file_id": fid, "file_name": filename, "filepath": filepath,
         "file_size": os.path.getsize(filepath),
         "upload_time": datetime.datetime.utcnow().isoformat(),
-        "status": "uploaded"
+        "status": "uploaded",
+        "user_email": user_email
     })
     return {"file_id": fid, "file_name": filename, "message": "Uploaded"}
 
 @app.get("/api/uploads")
 async def list_uploads(user_email: str = Depends(get_current_user)):
-    files = list(uploads_col.find({}, {"_id": 0}).sort("upload_time", -1))
+    files = list(uploads_col.find({"user_email": user_email}, {"_id": 0}).sort("upload_time", -1))
     for f in files:
         f["uploaded_at"] = f.get("upload_time")
         f["filename"] = f.get("file_name")
@@ -404,6 +402,9 @@ async def list_uploads(user_email: str = Depends(get_current_user)):
 
 @app.delete("/api/upload/{fid}")
 async def delete_upload(fid: str, user_email: str = Depends(get_current_user)):
+    fdoc = uploads_col.find_one({"file_id": fid, "user_email": user_email})
+    if not fdoc:
+        raise HTTPException(status_code=403, detail="Unauthorized or not found")
     uploads_col.delete_one({"file_id": fid})
     jobs_col.delete_many({"file_id": fid})
     reports_col.delete_one({"file_id": fid})
@@ -411,27 +412,30 @@ async def delete_upload(fid: str, user_email: str = Depends(get_current_user)):
 
 @app.post("/api/start-analysis", status_code=202)
 async def start_analysis(body: StartAnalysisRequest, background_tasks: BackgroundTasks, user_email: str = Depends(get_current_user)):
-    fdoc = uploads_col.find_one({"file_id": body.file_id})
+    fdoc = uploads_col.find_one({"file_id": body.file_id, "user_email": user_email})
     if not fdoc:
         raise HTTPException(status_code=404, detail="File not found")
-
+ 
     jid = str(uuid.uuid4())
-    _new_job(jid, body.file_id)
+    _new_job(jid, body.file_id, user_email)
     uploads_col.update_one({"file_id": body.file_id}, {"$set": {"status": "processing"}})
-
+ 
     # FastAPI BackgroundTasks runs in a thread pool — equivalent to threading.Thread
     background_tasks.add_task(_run_pipeline, jid, body.file_id, fdoc["filepath"], fdoc["file_name"])
     return {"job_id": jid}
-
+ 
 @app.get("/api/job/{jid}")
 async def get_job(jid: str, user_email: str = Depends(get_current_user)):
-    job = jobs_col.find_one({"job_id": jid}, {"_id": 0})
+    job = jobs_col.find_one({"job_id": jid, "user_email": user_email}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Not found")
     return job
-
+ 
 @app.get("/api/report/{fid}")
 async def get_report(fid: str, user_email: str = Depends(get_current_user)):
+    fdoc = uploads_col.find_one({"file_id": fid, "user_email": user_email})
+    if not fdoc:
+        raise HTTPException(status_code=404, detail="Not found")
     rep = reports_col.find_one({"file_id": fid}, {"_id": 0})
     if not rep:
         raise HTTPException(status_code=404, detail="Not found")
@@ -439,25 +443,25 @@ async def get_report(fid: str, user_email: str = Depends(get_current_user)):
 
 @app.post("/api/chat")
 async def chat(body: ChatRequest, user_email: str = Depends(get_current_user)):
+    """Chat endpoint — powered by LangGraph agentic workflow."""
     if not body.question:
         raise HTTPException(status_code=400, detail="Question required")
 
-    where_clause = {"source": body.filename} if body.filename else None
-    rctx = get_rag_engine().query(body.question, n_results=15, where=where_clause)
-
-    if body.filename:
-        try:
-            summary_res = get_rag_engine().collection.get(
-                where={"$and": [{"source": body.filename}, {"type": "analysis_summary"}]}
-            )
-            if summary_res and summary_res["documents"]:
-                summary_text = summary_res["documents"][0]
-                rctx["context"] = f"GLOBAL DATASET SUMMARY:\n{summary_text}\n\nRELEVANT DATA SNIPPETS:\n{rctx['context']}"
-        except Exception as e:
-            print(f"Chat: Could not fetch summary for {body.filename}: {e}")
-
-    ans = get_llm_client().chat_with_context(body.question, rctx["context"], rctx["sources"])
-    return {"answer": ans, "sources": rctx["sources"]}
+    try:
+        from llm.agent_workflow import run_agent
+        result = run_agent(query=body.question, filename=body.filename)
+        return {
+            "answer": result["answer"],
+            "sources": result["sources"],
+            "intent": result.get("intent", "unknown"),
+        }
+    except Exception as e:
+        print(f"[Chat] LangGraph agent error: {e} — falling back to direct RAG.")
+        # Fallback: direct RAG + LLM if agent fails
+        where_clause = {"source": body.filename} if body.filename else None
+        rctx = get_rag_engine().query(body.question, n_results=15, where=where_clause)
+        ans = get_llm_client().chat_with_context(body.question, rctx["context"], rctx["sources"])
+        return {"answer": ans, "sources": rctx["sources"], "intent": "fallback"}
 
 @app.get("/api/health")
 async def health():
@@ -480,4 +484,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 5001))
     print(f"\n[LazyBIZ] Starting FastAPI server on port {port}...")
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False, workers=1)
+    uvicorn.run("app:app", host="127.0.0.1", port=port, reload=False, workers=1)

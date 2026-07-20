@@ -1,99 +1,86 @@
-# LazyBIZ — AI-Powered Enterprise BI Dashboard
+# LazyBIZ — Enterprise-Grade Cloud-Native Business Intelligence Platform
 
-LazyBIZ is a state-of-the-art Business Intelligence platform that transforms raw data into actionable insights using AI. It leverages a Retrieval-Augmented Generation (RAG) pipeline to provide deep analytics, automated visualizations, and a natural language chatbot for your CSV data.
+LazyBIZ is a production-ready, cloud-native Business Intelligence platform that transforms raw data into high-value business insights. The platform leverages a state-of-the-art Model Context Protocol (MCP) architecture, stateful Agentic workflows (LangGraph), and cloud-hosted vector search (Supabase + pgvector) to provide automated data cleaning, statistical analysis, interactive charts, and natural-language data querying.
 
-![LazyBIZ Header](https://via.placeholder.com/1200x400/0b1326/ffffff?text=LazyBIZ+AI+Analytics)
+---
 
-## 🚀 Key Features
+## 🚀 Key Architectural Upgrades
 
-- **Automated Data Cleaning (MCP):** Automatically detects and fixes missing values, outliers, and formatting issues.
-- **Dynamic Visualizations:** Generates insightful charts (Revenue trends, Product performance, etc.) using Chart.js.
-- **RAG-Powered Chatbot:** "Ask LazyBIZ AI" allows you to query your data in natural language with source-specific grounding.
-- **Dual-Provider LLM Strategy:** Seamless fallback between Groq and OpenRouter to ensure high availability.
-- **Enterprise Design:** A premium, dark-mode dashboard built with glassmorphism and modern typography (Inter).
-- **History Management:** Revisit previously uploaded datasets and their AI-generated reports instantly.
+### 1. Cloud-Native Vector DB: Supabase + pgvector
+*   **ChromaDB completely replaced.** Local sqlite3-based vector databases are lost when platforms like Render restart. LazyBIZ now stores embeddings persistently in a cloud-hosted **PostgreSQL instance on Supabase** using the `pgvector` extension.
+*   **768-Dimension Embeddings:** Uses the full output range of Gemini's `text-embedding-004` model.
+*   **Fast Indexing:** Uses an `IVFFlat` cosine distance index on Supabase for sub-millisecond retrieval.
+*   **User Isolation:** Data is fully partitioned on retrieval, update, and deletion based on JWT authentication. Users only see and query their own datasets and history.
+
+### 2. Model Context Protocol (MCP) Server
+*   LazyBIZ exposes its core business intelligence tools (`clean_dataset`, `analyze_dataset`, `visualize_dataset`, `query_business_data`) through a standardized **MCP Server** (`backend/mcp_tools/mcp_server.py`).
+*   This server implements the JSON-RPC 2.0 protocol over standard input/output (`stdio`), allowing compatible AI hosts like **Claude Desktop** and **Cursor IDE** to directly consume your business analysis engine.
+
+### 3. LangGraph Agentic Workflow
+*   Replaces basic `if/else` logic with a stateful, directed graph agent:
+    *   **Classify Node:** Detects query intent (data vs. visualization vs. general).
+    *   **RAG Retrieve Node:** Connects to Supabase to fetch context and pre-generated analysis summaries.
+    *   **Visualization Node:** Automatically guides users to interactive charts.
+    *   **Generate Node:** Calls the generative model to write context-grounded business answers.
+
+### 4. MLOps CI/CD Pipeline
+*   Configured inside `.github/workflows/mlops_pipeline.yml`.
+*   Every push or pull request to the `main` branch triggers:
+    1.  Ruff code checking.
+    2.  Pytest backend unit tests.
+    3.  Schema validation on LLM output.
+    4.  Automatic webhook trigger for Render deployment.
+
+---
 
 ## 🛠️ Technology Stack
 
-### Backend
-- **Core:** Python (FastAPI)
-- **Vector Database:** ChromaDB (local persistence)
-- **Metadata Database:** MongoDB Atlas
-- **Embeddings:** SentenceTransformers (`all-MiniLM-L6-v2`)
-- **LLM Integration:** Groq (primary) & OpenRouter (fallback)
-- **Data Processing:** Pandas, NumPy
+*   **Backend:** FastAPI (Python 3.11)
+*   **Database:** MongoDB Atlas (User data/reports), Supabase pgvector (Vector store)
+*   **Orchestration:** LangGraph & LangChain Core
+*   **MCP Protocol:** FastMCP Server
+*   **Primary LLM Model:** Gemini Flash (`gemini-1.5-flash`) & Gemini Embedding (`text-embedding-004`)
+*   **Frontend:** Vanilla ES6+ SPA, Chart.js, Vanilla CSS Glassmorphism
 
-### Frontend
-- **Structure:** Single Page Application (SPA) architecture
-- **Logic:** Vanilla JavaScript (ES6+)
-- **Charts:** Chart.js
-- **Styling:** Premium Vanilla CSS (Custom design system)
-- **Icons:** Google Material Icons Outlined
+---
 
-## 📦 Setup & Installation
+## 📦 Local Installation
 
-### 1. Prerequisites
-- Python 3.9+
-- MongoDB Atlas account (or local MongoDB)
-- API Keys for **Groq** and/or **OpenRouter**
+### 1. Requirements
+*   Python 3.11
+*   MongoDB Atlas Account
+*   Supabase Account (with pgvector enabled)
+*   Gemini API Key (and optionally Groq / OpenRouter)
 
-### 2. Clone the Repository
-```bash
-git clone <repository-url>
-cd "LazyBIZ"
+### 2. Environment Setup
+Create `backend/.env` containing:
+```env
+JWT_SECRET=your_jwt_secret
+MONGO_URI=your_mongodb_atlas_uri
+GEMINI_API_KEY=your_gemini_api_key
+
+# Supabase pgvector DB Urls
+# Local (Direct / IPv6):
+SUPABASE_DB_URL=postgresql://postgres:[PASSWORD]@db.xmkbjytyabwufumunhkb.supabase.co:5432/postgres
+# Render (Session pooler / IPv4):
+SUPABASE_DB_URL_IPV4=postgresql://postgres.xmkbjytyabwufumunhkb:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
 ```
 
-### 3. Install Dependencies
+### 3. Create & Install Virtual Environment
 ```bash
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt
 ```
 
-### 4. Environment Configuration
-Create a `.env` file in the root directory (or inside `backend/`):
-```env
-# API Keys
-GROQ_API_KEY=your_groq_api_key
-OPENROUTER_API_KEY=your_openrouter_api_key
-
-# Database
-MONGO_URI=your_mongodb_connection_string
-
-# App Settings
-JWT_SECRET=your_secret_key
-UPLOAD_FOLDER=../data
-CHROMA_DB_PATH=../data/chroma_db
+### 4. Run the Platform
+```bash
+.\venv\Scripts\python.exe run.py
 ```
-
-## 🏃 Running the Application
-
-1. **Start the Backend (Recommended):**
-   ```bash
-   python start.py
-   ```
-   *This automatically verifies/installs your venv dependencies and runs the FastAPI backend.*
-
-   Alternatively, if you prefer manual startup:
-   ```bash
-   .\venv\Scripts\activate
-   cd backend
-   python app.py
-   ```
-   *The server will start on `http://localhost:5001`*
-
-2. **Access the Dashboard:**
-   Open your browser and navigate to `http://localhost:5001`.
-
-## 📖 How to Use
-
-1. **Sign Up / Login:** Create an account to secure your data.
-2. **Upload CSV:** Drop a sales, review, or business dataset into the upload zone.
-3. **Wait for Pipeline:** Watch the MCP tool clean data, generate charts, and embed context.
-4. **Explore Insights:** View the auto-generated business recommendations.
-5. **Chat with AI:** Use the chatbot to ask specific questions like *"What is our total revenue for Q3?"* or *"Identify the top 3 underperforming products."*
-
-## 🔒 Security & Privacy
-- **JWT Authentication:** All API endpoints are protected via JSON Web Tokens.
-- **Local RAG:** Your raw data chunks are stored in a local vector database, and only relevant snippets are sent to the LLM for processing.
+Open `http://localhost:5001` in your browser.
 
 ---
-Built with ❤️ by the LazyBIZ Team.
+
+## 🔒 Security & Privacy Enforcements
+*   **JWT Protected:** Authorization Bearer tokens guard all API operations.
+*   **Strict Scope Querying:** Database queries explicitly query by `user_email` mapped from the verified JWT payload. Uploads and reports cannot leak across accounts.

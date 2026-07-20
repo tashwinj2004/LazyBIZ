@@ -1,0 +1,72 @@
+name: LazyBIZ — MLOps CI/CD Data & Model Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate_and_deploy:
+    name: Lint → Test → Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout repository ──────────────────────────────────────────────
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python 3.11 ───────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ── 3. Install all dependencies ─────────────────────────────────────────
+      - name: Install Core & ML Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest ruff
+
+      # ── 4. Lint code with Ruff (fast Python linter) ─────────────────────────
+      - name: Run Linter (Ruff)
+        run: |
+          ruff check backend/ --ignore E501,E402
+        continue-on-error: true  # Don't block deploy on style warnings
+
+      # ── 5. Run backend unit tests ────────────────────────────────────────────
+      - name: Run Backend Unit Tests
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          cd backend
+          python -m pytest full_pipeline_test.py -v --tb=short
+
+      # ── 6. Validate prompt output schemas (RAG quality check) ──────────────
+      - name: Validate LLM Output Schemas
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          cd backend
+          python debug_upload.py
+        continue-on-error: true  # Non-blocking: schema validation is advisory
+
+      # ── 7. CD: Deploy to Render on successful tests ─────────────────────────
+      - name: Deploy to Render
+        if: success() && github.ref == 'refs/heads/main'
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            curl -X POST "$RENDER_DEPLOY_HOOK"
+            echo "✅ Render deployment triggered."
+          else
+            echo "⚠️ RENDER_DEPLOY_HOOK not set — skipping deployment trigger."
+          fi

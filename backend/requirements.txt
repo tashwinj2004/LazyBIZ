@@ -4,7 +4,6 @@ python-multipart==0.0.9
 pandas==2.2.2
 numpy==1.26.4
 scikit-learn==1.5.0
-chromadb==0.5.3
 python-dotenv==1.0.1
 werkzeug==3.0.3
 PyJWT==2.8.0
@@ -16,5 +15,14 @@ matplotlib==3.9.0
 seaborn==0.13.2
 scipy==1.13.1
 gunicorn==21.2.0
-pysqlite3-binary
 
+# ── pgvector / Supabase ───────────────────────────────────────────────────────
+psycopg2-binary==2.9.9
+pgvector==0.3.6
+
+# ── Agentic AI / LangGraph ────────────────────────────────────────────────────
+langgraph==0.2.73
+langchain-core==0.3.62
+
+# ── MCP Server ────────────────────────────────────────────────────────────────
+mcp
