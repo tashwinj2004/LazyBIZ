@@ -74,6 +74,13 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../front
 
 app = FastAPI(title="LazyBIZ RAG Dashboard", version="2.0.0")
 
+@app.on_event("startup")
+async def startup_event():
+    print("\n" + "="*60)
+    print("🚀 LazyBIZ RAG Dashboard is active and running!")
+    print("👉 Click here to open: http://localhost:5001")
+    print("="*60 + "\n")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -170,10 +177,12 @@ if db is not None:
         uploads_col = db.uploads
         jobs_col = db.jobs
         reports_col = db.reports
+        users_col = db.users
         mongo_client.admin.command('ping')
         uploads_col.create_index("file_id", unique=True)
         jobs_col.create_index("job_id", unique=True)
         reports_col.create_index("file_id", unique=True)
+        users_col.create_index("email", unique=True)
         print("MongoDB: Connected and Indices created.")
     except Exception as e:
         print(f"MongoDB Connection Warning: {e}")
@@ -181,11 +190,13 @@ if db is not None:
         uploads_col = LocalMockCollection()
         jobs_col = LocalMockCollection()
         reports_col = LocalMockCollection()
+        users_col = LocalMockCollection()
 else:
     print("MongoDB: FAILED TO CONNECT. Falling back to local in-memory database.")
     uploads_col = LocalMockCollection()
     jobs_col = LocalMockCollection()
     reports_col = LocalMockCollection()
+    users_col = LocalMockCollection()
 
 # --- Helper Functions ---
 def _new_job(job_id: str, file_id: str, user_email: str):
@@ -284,22 +295,6 @@ def _run_pipeline(job_id: str, file_id: str, filepath: str, filename: str):
         print(f"PIPELINE ERROR: {error_msg}")
         _update_job(job_id, status="failed", progress=0, message="Pipeline failed.", error=error_msg[:1000])
 
-# --- User Management ---
-USERS_FILE = os.path.join(UPLOAD_FOLDER, "users.json")
-
-def _load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            try:
-                return json.load(f)
-            except Exception:
-                return {}
-    return {}
-
-def _save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
-
 # --- JWT Auth ---
 security = HTTPBearer(auto_error=False)
 
@@ -338,12 +333,15 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/auth/register", status_code=201)
 async def register(body: RegisterRequest):
-    users = _load_users()
-    if body.email in users:
+    if users_col.find_one({"email": body.email}):
         raise HTTPException(status_code=409, detail="User exists")
     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    users[body.email] = {"name": body.name, "email": body.email, "password_hash": hashed}
-    _save_users(users)
+    users_col.insert_one({
+        "name": body.name,
+        "email": body.email,
+        "password_hash": hashed,
+        "created_at": datetime.datetime.utcnow().isoformat()
+    })
     token = jwt.encode(
         {"email": body.email, "name": body.name, "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7)},
         SECRET_KEY, algorithm="HS256"
@@ -352,8 +350,7 @@ async def register(body: RegisterRequest):
 
 @app.post("/api/auth/login")
 async def login(body: LoginRequest):
-    users = _load_users()
-    user = users.get(body.email)
+    user = users_col.find_one({"email": body.email})
     if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password_hash"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = jwt.encode(
